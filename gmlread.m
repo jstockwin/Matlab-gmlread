@@ -36,12 +36,12 @@ function [ G ] = gmlread( file_path )
            if ~isempty(r)
                directed = str2double(r{1});
                determined_directed = 1;
+                          % TODO: Handle directed graphs!
+               if directed
+                   error('Directed graphs not currently supported')
+               end
            end
            
-           % TODO: Handle directed graphs!
-           if directed
-               error('Directed graphs not currently supported')
-           end
         end
         
         if ~isempty(strfind(tline, 'node'))
