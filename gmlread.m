@@ -126,9 +126,6 @@ function [ G ] = gmlread( file_path )
         
         
     end
-    node_labels
-    length(node_ids)
-    length(node_labels)
     NodeProps = table(node_ids', node_labels', 'VariableNames', {'id', 'label'});
     G = addnode(graph(), NodeProps);
     G = addedge(G, EdgeTable);
