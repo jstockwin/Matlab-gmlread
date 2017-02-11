@@ -38,6 +38,7 @@ function [ G ] = gmlread( file_path )
                determined_directed = 1;
                           % TODO: Handle directed graphs!
                if directed
+                   fclose(inputfile);
                    error('Directed graphs not currently supported')
                end
            end
@@ -72,9 +73,15 @@ function [ G ] = gmlread( file_path )
                 if has_id
                     node_ids{node_count} = this_id;
                     map = [map; containers.Map({this_id}, {node_count})];
+                else
+                    fclose(inputfile);
+                    error('Node ID not found')
                 end
                 if has_label
                     node_labels{node_count} = this_label;
+                else
+                    % TODO: Can we do something better here?
+                    node_labels{node_count} = '';
                 end
                 has_label = 0;
                 has_id = 0;
@@ -119,7 +126,9 @@ function [ G ] = gmlread( file_path )
         
         
     end
-    
+    node_labels
+    length(node_ids)
+    length(node_labels)
     NodeProps = table(node_ids', node_labels', 'VariableNames', {'id', 'label'});
     G = addnode(graph(), NodeProps);
     G = addedge(G, EdgeTable);
