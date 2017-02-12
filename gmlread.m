@@ -14,6 +14,9 @@ function [ G ] = gmlread( filepath )
     
     node_props = {};
     num_node_props = 0;
+    
+    edge_props = {};
+    num_edge_props = 0;
 
     % This map will map the ids from the file to the matlab indexes. 
     map = containers.Map('KeyType', 'double', 'ValueType', 'double');
@@ -45,8 +48,20 @@ function [ G ] = gmlread( filepath )
                 continue
             end
         elseif interpreting_edge
-            % TODO: Handle edge props other than source and target here?
-            continue;
+            if strcmp(str, '[')
+                continue
+            elseif strcmp(str, ']')
+                interpreting_edge = 0;
+                continue
+            elseif strcmp(str, 'source') || strcmp(str, 'target')
+                continue
+            else
+                if ~ismember(str, edge_props)
+                    num_edge_props = num_edge_props + 1;
+                    edge_props{num_edge_props} = str;
+                end
+                continue
+            end
         else
             if strcmp(str, 'node')
                 interpreting_node = 1;
@@ -80,6 +95,8 @@ function [ G ] = gmlread( filepath )
     has_target = 0;
     
     EdgeTable = table(zeros(edge_count, 2), 'VariableNames', {'EndNodes'});
+    EdgeProps = cell2table(repmat(cell(edge_count, 1), 1, num_edge_props), 'VariableNames', edge_props);
+    EdgeTable = [EdgeTable, EdgeProps];
     NodeProps = cell2table(repmat(cell(node_count, 1), 1, num_node_props), 'VariableNames', node_props);
     while 1
         % Read next line
@@ -113,7 +130,7 @@ function [ G ] = gmlread( filepath )
                 interpreting_node = 0;
                 if ~has_id
                     fclose(inputfile);
-                    error('Node ID not found')
+                    err('Node ID not found')
                 end
                 has_id = 0;
                 continue
@@ -133,38 +150,67 @@ function [ G ] = gmlread( filepath )
         
         
         if interpreting_edge
-            source = regexp(tline, '(?<=source [^0-9]*)[0-9]*\.?[0-9]+', 'match');
-            target = regexp(tline, '(?<=target [^0-9]*)[0-9]*\.?[0-9]+', 'match');
-            done = ~isempty(strfind(tline, ']'));
+            str = regexp(tline, '(?<=^\s*)([^ \t]+)', 'match');
+            str = str{1};
             
-            if ~isempty(source)
+            if strcmp(str, '[')
+                continue
+            elseif strcmp(str, ']')
+                % Done interpreting edge. Check we found an source and target, and reset
+                % values. 
+                if has_source && has_target
+                    EdgeTable{current_edge, 1} = [map(this_source) map(this_target)]; 
+                else
+                    fclose(inputfile);
+                    err('Node ID not found')
+                end
+                has_source = 0;
+                has_target = 0;
+                interpreting_edge = 0;
+                continue
+            elseif strcmp(str, 'source')
                 has_source = 1;
+                source = regexp(tline, '(?<=source [^0-9]*)[0-9]*\.?[0-9]+', 'match');
                 this_source = str2double(source{1});
                 continue
-            end
-            if ~isempty(target)
+            elseif strcmp(str, 'target')
                 has_target = 1;
+                target = regexp(tline, '(?<=target [^0-9]*)[0-9]*\.?[0-9]+', 'match');
                 this_target = str2double(target{1});
                 continue
+            else
+                val = regexp(tline, strcat('(?<=', str, ' ).*'), 'match');
+                EdgeTable{current_edge, str} = val;
+                continue
             end
-            
-            if done
-               if has_source && has_target
-                   EdgeTable{current_edge, 1} = [map(this_source) map(this_target)];          
-               else
-                   fclose(inputfile);
-                   error('Bad things')
-               end
-               interpreting_edge = 0;
-               continue
-            end
-            continue
         end
     end
     if directed
-        G = digraph(EdgeTable, NodeProps);
+        try
+            G = digraph(EdgeTable, NodeProps);
+        catch err
+            if strcmp(err.identifier, 'MATLAB:graphfun:graphbuiltin:DuplicateEdges')
+                warning('Duplicate edges detected. These will be ignored')
+                [~, idx] = unique(EdgeTable(:,1));
+                EdgeTable = EdgeTable(idx,:);
+                G = digraph(EdgeTable, NodeProps);
+            else
+                rethrow(err)
+            end
+        end
     else
-        G = graph(EdgeTable, NodeProps);
+        try
+            G = graph(EdgeTable, NodeProps);
+        catch err
+            if strcmp(err.identifier, 'MATLAB:graphfun:graphbuiltin:DuplicateEdges')
+                warning('Duplicate edges detected. These will be ignored')
+                [~, idx] = unique(EdgeTable(:,1));
+                EdgeTable = EdgeTable(idx,:);
+                G = graph(EdgeTable, NodeProps);
+            else
+                rethrow(err)
+            end
+        end
     end
     fclose(inputfile);
 
