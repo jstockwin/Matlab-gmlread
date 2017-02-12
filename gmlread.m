@@ -34,47 +34,38 @@ function [ G ] = gmlread( filepath )
         str = regexp(tline, '(?<=^\s*)([^ \t]+)', 'match');
         str = str{1};
         
-        if interpreting_node
-            if strcmp(str, '[')
-                continue
-            elseif strcmp(str, ']')
-                interpreting_node = 0;
-                continue
-            else
+        if strcmp(str, '[')
+            continue
+        elseif strcmp(str, ']')
+            interpreting_node = 0;
+            interpreting_edge = 0;
+            continue
+        elseif strcmp(str, 'node')
+            interpreting_node = 1;
+            node_count = node_count + 1;
+        elseif strcmp(str, 'edge')
+            interpreting_edge = 1;
+            edge_count = edge_count + 1;
+        else
+            if interpreting_node
                 if ~ismember(str, node_props)
                     num_node_props = num_node_props + 1;
                     node_props{num_node_props} = str;
                 end
                 continue
-            end
-        elseif interpreting_edge
-            if strcmp(str, '[')
-                continue
-            elseif strcmp(str, ']')
-                interpreting_edge = 0;
-                continue
-            elseif strcmp(str, 'source') || strcmp(str, 'target')
-                continue
-            else
-                if ~ismember(str, edge_props)
-                    num_edge_props = num_edge_props + 1;
-                    edge_props{num_edge_props} = str;
+            elseif interpreting_edge
+                if strcmp(str, 'source') || strcmp(str, 'target')
+                    continue
+                else
+                    if ~ismember(str, edge_props)
+                        num_edge_props = num_edge_props + 1;
+                        edge_props{num_edge_props} = str;
+                    end
+                    continue
                 end
-                continue
-            end
-        else
-            if strcmp(str, 'node')
-                interpreting_node = 1;
-                node_count = node_count + 1;
-            elseif strcmp(str, 'edge')
-                interpreting_edge = 1;
-                edge_count = edge_count + 1;
             end
         end
-        
-        
-        
-        
+ 
         if ~determined_directed
            r = regexp(tline, '(?<=directed [^0-1]*)[0-1]+', 'match');
            if ~isempty(r)
@@ -116,72 +107,63 @@ function [ G ] = gmlread( filepath )
             interpreting_edge = 1;
             continue;
         end
-        
-        if interpreting_node
             
-            str = regexp(tline, '(?<=^\s*)([^ \t]+)', 'match');
-            str = str{1};
-            
-            if strcmp(str, '[')
-                continue
-            elseif strcmp(str, ']')
-                % Done interpreting node. Check we found an id, and reset
-                % values. 
-                interpreting_node = 0;
-                if ~has_id
-                    fclose(inputfile);
-                    err('Node ID not found')
-                end
-                has_id = 0;
-                continue
-            elseif strcmp(str, 'id')
-                has_id = 1;
-                id = regexp(tline, '(?<=id [^0-9]*)[0-9]*\.?[0-9]+', 'match');
-                this_id = str2double(id{1});
-                NodeProps{current_node, 'id'} = {this_id};
-                map = [map; containers.Map({this_id}, {current_node})];
-                continue
-            else
-                val = regexp(tline, strcat('(?<=', str, ' ).*'), 'match'); 
-                NodeProps{current_node, str} = val;
-                continue
+        str = regexp(tline, '(?<=^\s*)([^ \t]+)', 'match');
+        str = str{1};
+
+        if strcmp(str, '[')
+            continue
+        elseif strcmp(str, ']')
+            % Done interpreting node. Check we found an id, and reset
+            % values. 
+            if interpreting_node && ~has_id
+                fclose(inputfile);
+                error('Node ID not found')
             end
-        end
-        
-        
-        if interpreting_edge
-            str = regexp(tline, '(?<=^\s*)([^ \t]+)', 'match');
-            str = str{1};
-            
-            if strcmp(str, '[')
-                continue
-            elseif strcmp(str, ']')
-                % Done interpreting edge. Check we found an source and target, and reset
-                % values. 
+            if interpreting_edge
                 if has_source && has_target
-                    EdgeTable{current_edge, 1} = [map(this_source) map(this_target)]; 
+                        EdgeTable{current_edge, 1} = [map(this_source) map(this_target)];
                 else
                     fclose(inputfile);
-                    err('Node ID not found')
+                    error('Edge did not have source and target')
                 end
-                has_source = 0;
-                has_target = 0;
-                interpreting_edge = 0;
-                continue
-            elseif strcmp(str, 'source')
-                has_source = 1;
-                source = regexp(tline, '(?<=source [^0-9]*)[0-9]*\.?[0-9]+', 'match');
-                this_source = str2double(source{1});
-                continue
-            elseif strcmp(str, 'target')
-                has_target = 1;
-                target = regexp(tline, '(?<=target [^0-9]*)[0-9]*\.?[0-9]+', 'match');
-                this_target = str2double(target{1});
-                continue
-            else
-                val = regexp(tline, strcat('(?<=', str, ' ).*'), 'match');
-                EdgeTable{current_edge, str} = val;
-                continue
+            end
+            interpreting_node = 0;
+            interpreting_edge = 0;
+            has_id = 0;
+            has_source = 0;
+            has_target = 0;
+            continue
+        else
+            if interpreting_node
+                if strcmp(str, 'id')
+                    has_id = 1;
+                    id = regexp(tline, '(?<=id [^0-9]*)[0-9]*\.?[0-9]+', 'match');
+                    this_id = str2double(id{1});
+                    NodeProps{current_node, 'id'} = {this_id};
+                    map = [map; containers.Map({this_id}, {current_node})];
+                    continue
+                else
+                    val = regexp(tline, strcat('(?<=', str, ' ).*'), 'match'); 
+                    NodeProps{current_node, str} = val;
+                    continue
+                end
+            elseif interpreting_edge
+                if strcmp(str, 'source')
+                    has_source = 1;
+                    source = regexp(tline, '(?<=source [^0-9]*)[0-9]*\.?[0-9]+', 'match');
+                    this_source = str2double(source{1});
+                    continue
+                elseif strcmp(str, 'target')
+                    has_target = 1;
+                    target = regexp(tline, '(?<=target [^0-9]*)[0-9]*\.?[0-9]+', 'match');
+                    this_target = str2double(target{1});
+                    continue
+                else
+                    val = regexp(tline, strcat('(?<=', str, ' ).*'), 'match');
+                    EdgeTable{current_edge, str} = val;
+                    continue
+                end
             end
         end
     end
